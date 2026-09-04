@@ -1,0 +1,101 @@
+version: '3.8'
+
+networks:
+  veloz-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+
+services:
+  # 1. Banco de Dados Relacional
+  postgres:
+    image: postgres:15-alpine
+    container_name: veloz-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: velozpassword123
+      POSTGRES_DB: pedidos_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db/01-init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    networks:
+      - veloz-network
+
+  # 2. Mensageria Assíncrona (RabbitMQ)
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: veloz-rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"     # Porta de conexão das aplicações
+      - "15672:15672"   # Painel Web administrativo
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - veloz-network
+
+  # 3. Microsserviço de Pedidos
+  pedidos-service:
+    build:
+      context: ./services/pedidos-service
+      dockerfile: Dockerfile
+    container_name: veloz-pedidos
+    restart: on-failure
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgres://postgres:velozpassword123@postgres:5432/pedidos_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      - postgres
+      - rabbitmq
+    networks:
+      - veloz-network
+
+  # 4. Microsserviço de Pagamentos
+  pagamentos-service:
+    build:
+      context: ./services/pagamentos-service
+      dockerfile: Dockerfile
+    container_name: veloz-pagamentos
+    restart: on-failure
+    environment:
+      PORT: 3002
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      - rabbitmq
+    networks:
+      - veloz-network
+
+  # 5. Microsserviço de Estoque
+  estoque-service:
+    build:
+      context: ./services/estoque-service
+      dockerfile: Dockerfile
+    container_name: veloz-estoque
+    restart: on-failure
+    environment:
+      PORT: 3003
+    networks:
+      - veloz-network
+
+  # 6. API Gateway (Ponto de Entrada Único)
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: veloz-gateway
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      PEDIDOS_URL: http://pedidos-service:3001
+    depends_on:
+      - pedidos-service
+    networks:
+      - veloz-network
