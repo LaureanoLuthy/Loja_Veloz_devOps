@@ -16,9 +16,9 @@ jobs:
 
       - name: Validar Sintaxe dos Arquivos YAML (K8s)
         run: |
-          python -c "import yaml, glob; [yaml.safe_load(open(f)) for f in glob.glob('k8s/*.yaml')]"
-          echo "Todos os manifestos Kubernetes possuem sintaxe YAML válida!"
-
+          python -c "import yaml, glob; [list(yaml.safe_load_all(open(f))) for f in glob.glob('k8s/*.yaml')]"
+          echo "Todos os manifestos Kubernetes possuem sintaxe YAML valida!"
+          
   build-and-test:
     name: Build das Imagens Docker
     runs-on: ubuntu-latest
